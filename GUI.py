@@ -36,9 +36,6 @@ class MainWindow(Tk):
             frame.grid(row=0, column=0, sticky="nsew")
             self.frames[F] = frame
 
-        # ACCOUNT_MANAGER.login("jackrundle530", "Rund1221!")
-        # self.set_frame(CourseSearch)
-
         self.set_frame(Login)
         self.mainloop()
 
