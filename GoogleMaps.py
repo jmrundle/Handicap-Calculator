@@ -1,9 +1,4 @@
-# Using Python requests and the Google Maps Geocoding API.
-#
-# References:
-#
-# * http://docs.python-requests.org/en/latest/
-# * https://developers.google.com/maps/
+# Used to generate latitude and longitude values of each course in database
 
 import requests
 
@@ -11,7 +6,7 @@ def get_info(**params):
     if 'address' not in params.keys():
         params['address'] = None
     params['sensor'] = 'false'
-    params['key'] = 'AIzaSyAwkGbfmnJH4LVlFgcBcAxlFw5VswMe2Pc'
+    params['key'] = API_KEY
     
     # Do the request and get the response data
     req = requests.get('https://maps.googleapis.com/maps/api/geocode/json',
