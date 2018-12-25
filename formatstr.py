@@ -17,7 +17,7 @@ def format_str(string, split=False, limit=15):
             else:
                 if split:
                     end = limit - line_length - 1
-                    final += word[: end] + "-\n"
+                    final += word[:end] + '-\n'
                     new = word[end:]
                     final += format_str(new, split=True, limit=limit)
                     line_length = len(final.split('\n')[-1])

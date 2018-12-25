@@ -1,13 +1,15 @@
 import sqlite3
+import Handicap
 from cryptography.fernet import Fernet
-from Handicap import Calculate
+import Distance
+from datetime import datetime
 
 
 class AccountManager:
 
     def __init__(self, *args, **kwargs):
         self.account = None
-
+        
         self.key = b'5n2-Wn3Zuutm6UcTLK_En1GRbdKx-cG7brrLgazsTbg='
         self.cipher_suite = Fernet(self.key)
 
@@ -53,6 +55,7 @@ class AccountManager:
         else:
             raise ValueError("No user with the username '{}'.".format(username))
         self.account = Account(username)
+        return self.account
 
     def log_out(self):
         self.account = None
@@ -73,7 +76,7 @@ class AccountManager:
 
         # search for username in UserData
         # if username already present, raise error
-        check = self.user_cursor.execute("SELECT * FROM UserData WHERE username=?", (username,))
+        check = self.user_cursor.execute("SELECT username FROM UserData WHERE username=?", (username,))
         if check.fetchone():
             raise ValueError("Username taken")
 
@@ -130,14 +133,14 @@ class Account(AccountManager):
         return self.user_cursor.execute(command).fetchone()[0]
 
     def update_index(self):
-        rounds = self.get_last_20()
+        rounds = self.get_rounds()
 
-        # compile tuples to a single list
-        differentials = list(map(lambda r: r[8], rounds))
+        # compile round tuples to list of differentials
+        differentials = list(map(lambda r: r[-2], rounds))
 
-        # use Handicap.Calculate module to calculate handicap index
-        not_formatted_handicap = Calculate.calculate_composite_handicap(differentials)
-        self.handicap = Calculate.format_handicap(not_formatted_handicap)
+        # calculate and properly format handicap index
+        not_formatted_handicap = Handicap.calculate_composite_handicap(differentials)
+        self.handicap = Handicap.format_handicap(not_formatted_handicap)
 
         # update database with new handicap index
         self.user_cursor.execute("UPDATE UserData SET handicap = ? WHERE user_id = ?",
@@ -181,7 +184,7 @@ class Account(AccountManager):
                 round_type = "W"
                 round_name = course.name
 
-        differential = Calculate.calculate_round_handicap(score, round_cr, round_sr)
+        differential = Handicap.calculate_round_handicap(score, round_cr, round_sr)
         self.info_cursor.execute("""INSERT INTO Rounds(user_id, course_id, course_name, date, tee_col, cr_sr, score, differential, type)
                                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                                  (self.user_id, course.id, round_name, date, tee.color, '{}/{}'.format(round_cr, round_sr),
@@ -190,12 +193,56 @@ class Account(AccountManager):
         self.info_conn.commit()
         self.update_index()
 
-    def get_last_20(self):
+    def get_rounds(self, limit=20):
         """Returns a list of user's 20 most recent handicap differentials from Scores database"""
         return self.info_cursor.execute("""SELECT * FROM Rounds
                                         WHERE user_id = ? AND
                                         type != 'W'
                                         ORDER BY date DESC
-                                        LIMIT 20""",
-                                        (self.user_id,)
+                                        LIMIT ?""",
+                                        (self.user_id, limit)
                                         ).fetchall()
+
+    def get_suggested_courses(self):
+        near = list(map(lambda c: c[0], Distance.within(15, limit=5)))
+        
+        today = datetime.today()
+        recent_rounds = self.get_rounds(limit=30)
+        rounds = dict()
+        ids = dict()
+        for i, round in enumerate(recent_rounds):
+            course_id, course, date, type = round[2], round[3], round[4], round[9]
+            ids[course] = course_id
+            
+            y1, m1, d1 = map(int, date.split("/"))
+            y2, m2, d2 = today.year, today.month, today.day
+            days_since = 365 * (y2 - y1) + 30 * (m2 - m1) + d2 - d1
+            
+            if days_since < 1:
+                days_since = 0.5
+            
+            if type == "C":
+                continue
+            
+            if course not in rounds:
+                rounds[course] = (len(recent_rounds) - i) / (days_since * 0.5)
+            else:
+                rounds[course] += 12 * (len(recent_rounds) - i) / (days_since * 0.5)
+    
+        # five most popular courses
+        # convert dict to sorted list, take top 5, get course name, convert back to list
+        # the convert list of course names to course ids
+        populars = list(map(lambda r: r[0], sorted(rounds.items(), key=lambda r: r[1], reverse=True)))
+        populars = list(map(lambda c: ids[c], populars))
+        
+        
+        # compile list of top 5 popular courses not featured in "near"
+        popular = []
+        for course in populars:
+            if len(popular) == 5:
+                break
+            if course not in near:
+                popular.append(course)
+        
+        return near + popular
+

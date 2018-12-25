@@ -1,5 +1,10 @@
 """
-    To be ran once.
+    ********** OUTDATED ************
+    CURRENT DATABASE USES DIFFERENT STRUCTURE AND IS
+    A RESULT OF A VARIETY OF DIFFERENT PROGRAMS
+    ********************************
+    
+    
     Generates a Courses database
         contains links, USGA course and slope ratings, and locations for every course in the US
     Will take probably 20 hrs to generate...  so just use the one I already (painstakingly) generated
@@ -16,10 +21,10 @@ import time
 class Generate:
 
     def __init__(self):
-        self.connection = sqlite3.connect("Courses.db")
+        self.connection = sqlite3.connect("Databases/Courses.db")
         self.cursor = self.connection.cursor()
         self.cursor.execute("PRAGMA EKY = 'password'")
-        self.connection.execute('CREATE TABLE IF NOT EXISTS CourseNames(id INTEGER, name TEXT, state TEXT, city TEXT)')
+        self.connection.execute('CREATE TABLE IF NOT EXISTS CourseNames(id INTEGER, name TEXT, state TEXT, city TEXT, latitude REAL, longitude REAL)')
 
         self.base_url = "https://ncrdb.usga.org/NCRDB/"
 
