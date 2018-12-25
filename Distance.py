@@ -3,6 +3,8 @@ import sqlite3              # accessing CourseData table
 from geocoder import ip     # get latlong val of current location
 
 
+conn = sqlite3.connect("Databases/Courses.db")
+cur = conn.cursor()
 current_pos = ip("me").latlng
 
 
@@ -32,10 +34,6 @@ def between(p1, p2):
 
 def within(max_dist, limit=20, from_pos=None):
     """Returns list of courses within a certain distance"""
-    
-    conn = sqlite3.connect("Databases/Courses.db")
-    cur = conn.cursor()
-    
     # if not given an initial position, set initial position to current location
     if from_pos is None:
         # if ip call doesn't work
