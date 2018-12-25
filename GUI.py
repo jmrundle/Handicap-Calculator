@@ -47,6 +47,7 @@ class MainWindow(Tk):
         for FrameClass in (Login, CreateAccount, MainScreen, CourseSearch, EnterScore):
             frame = FrameClass(self.container, self)
             frame.grid(row=0, column=0, sticky="nsew")
+<<<<<<< HEAD
             self.frames[FrameClass] = frame
 
         ACCOUNT_MANAGER.login("jackrundle530", "Rund1221!")
@@ -55,6 +56,11 @@ class MainWindow(Tk):
         self.course = None
         # self.set_frame(Login)
         
+=======
+            self.frames[F] = frame
+
+        self.set_frame(Login)
+>>>>>>> 0c69e1853921b748d035fe8c2996f7eadd7009ad
         self.mainloop()
 
     def set_frame(self, title):
