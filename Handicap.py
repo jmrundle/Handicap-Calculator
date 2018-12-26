@@ -72,7 +72,7 @@ def calculate_composite_handicap(rounds):
     # value is number of rounds to use in calculation
     number = len(rounds)
     if number < 5:
-        return 0
+        return "N/A"
     
     best = {
         5: 1, 6: 1, 7: 2, 8: 2, 9: 3, 10: 3, 11: 4, 12: 4,
