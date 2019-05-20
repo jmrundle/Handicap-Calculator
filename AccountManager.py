@@ -7,8 +7,7 @@ import os
 
 
 account = None
-key = os.environ.get('HANDICAP_KEY')
-print key
+key = os.environ.get('HANDICAP_KEY', Fernet.generate_key())
 cipher_suite = Fernet(key)
 
 
