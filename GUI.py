@@ -13,11 +13,8 @@ except ImportError:
     from tkinter import ttk
     from tkinter import messagebox as tkMessageBox
 
-import UserAPI
+import AccountManager
 import handicap
-
-
-ACCOUNT_MANAGER = UserAPI.AccountManager()
 
 
 class MainWindow(Tk):
@@ -118,7 +115,7 @@ class Login(Frame):
             return
 
         try:
-            ACCOUNT_MANAGER.login(username, password)
+            AccountManager.login(username, password)
             self.username_entry.delete(0, END)
             self.password_entry.delete(0, END)
             self.window.set_frame(MainScreen)
@@ -205,7 +202,7 @@ class CreateAccount(Frame):
             return
 
         try:
-            ACCOUNT_MANAGER.create_user(username, password, first_name, last_name, gender)
+            AccountManager.create_user(username, password, first_name, last_name, gender)
             self.window.set_frame(Login)
         except ValueError as e:
             self.window.disp_msg(e)
@@ -217,10 +214,9 @@ class MainScreen(Frame):
         self.window = window
 
     def load_widgets(self):
-        account = ACCOUNT_MANAGER.account
         self.topleft = Frame(self, bg='#8cd9b3', highlightbackground="grey", highlightthickness=2)
         label = Label(self.topleft,
-                      text='{} {}\n{}'.format(account.first_name, account.last_name, account.handicap),
+                      text='{} {}\n{}'.format(AccountManager.account.first_name, AccountManager.account.last_name, AccountManager.account.handicap),
                       font=("Calibri", 30), padx=10, relief=GROOVE)
         label.place(anchor=CENTER, relx=0.5, rely=0.25)
         button = Button(self.topleft, text='Edit Account',
@@ -255,7 +251,7 @@ class MainScreen(Frame):
             self.canvas_frame.grid_columnconfigure(index=i, weight=1)
 
         colors = ['#C2CAFD', '#8E9AE1']
-        self.rounds = account.get_rounds()
+        self.rounds = AccountManager.account.get_rounds()
         for i, round in enumerate(self.rounds):
             round_id, _, _, course_name, date, _, cr, sr, score, diff, round_type = round
             color = colors[i % 2]
@@ -296,7 +292,7 @@ class MainScreen(Frame):
       # changing date column
         if col == 1:
             date = text_var.get()
-            ACCOUNT_MANAGER.account.update_round_info(round_id, date=date)
+            AccountManager.account.update_round_info(round_id, date=date)
 
         # changing score column
         if col == 3:
@@ -305,26 +301,25 @@ class MainScreen(Frame):
             except ValueError:
                 self.window.disp_msg("Score must be an integer")
                 return
-            ACCOUNT_MANAGER.account.update_round_info(round_id, score=score)
+            AccountManager.account.update_round_info(round_id, score=score)
 
         self.forget_widgets()
         self.load_widgets()
 
     def delete_round(self, id):
-        course_name = ACCOUNT_MANAGER.get_round_info(id, column="course_name")
-        date = ACCOUNT_MANAGER.get_round_info(id, column="date")
-        score = ACCOUNT_MANAGER.get_round_info(id, column="score")
+        course_name = AccountManager.get_round_info(id, column="course_name")
+        date = AccountManager.get_round_info(id, column="date")
+        score = AccountManager.get_round_info(id, column="score")
         ans = tkMessageBox.askyesno("Handicap Calculator", "Would you like to delete this round?\n\n{}: {} ({})".format(course_name, score, date))
         if ans:
-            ACCOUNT_MANAGER.delete_round(id)
-            ACCOUNT_MANAGER.account.update_index()
+            AccountManager.account.delete_round(id)
             self.forget_widgets()
             self.load_widgets()
         else:
             pass
 
     def log_out(self):
-        ACCOUNT_MANAGER.log_out()
+        AccountManager.log_out()
 
         self.forget_widgets()
         self.window.set_frame(Login)
@@ -367,7 +362,7 @@ class CourseSearch(Frame):
     
     
     def load_suggested(self):
-        suggested = ACCOUNT_MANAGER.account.get_suggested_courses()
+        suggested = AccountManager.account.get_suggested_courses()
         self.courses = map(lambda id: handicap.get_course_from_id(id), suggested)
         self.listbox.delete(0, END)
         for course in self.courses:
@@ -435,9 +430,8 @@ class EnterScore(Frame):
         scrollbar.pack(side=RIGHT, fill=Y)
         self.listbox.pack(side=LEFT, fill=BOTH, expand=True)
 
-        account = ACCOUNT_MANAGER.account
         self.course = self.window.course
-        self.tees = handicap.get_tees_from_id(self.course.id, gender=account.gender)
+        self.tees = handicap.get_tees_from_id(self.course.id, gender=AccountManager.account.gender)
         max_len = 0
         for tee in self.tees:
             option = "{}: {}/{}".format(tee.color, tee.cr, tee.sr)
@@ -535,8 +529,8 @@ class EnterScore(Frame):
         round_type = self.round_type.get()[0]
         holes_count = self.holes_count.get()
 
-        ACCOUNT_MANAGER.account.upload_info(self.course, tee, score, date,
-                                            holes_played=holes_count, round_type=round_type)
+        AccountManager.account.upload_info(self.course, tee, score, date,
+                                           holes_played=holes_count, round_type=round_type)
 
         # self.forget_widgets()
         self.window.set_frame(MainScreen)

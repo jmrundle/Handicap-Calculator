@@ -39,7 +39,7 @@ class Connection:
         """Gets a single result from a SQL query to the class database"""
         return self.get(query, params).fetchone()
 
-    def get_all(self, query, params):
+    def get_all(self, query, params=None):
         """Gets all results from a SQL query to the class database"""
         return self.get(query, params).fetchall()
 
