@@ -1,51 +1,19 @@
-import sqlite3
-import Handicap
+import handicap
 from cryptography.fernet import Fernet
-import Distance
+import distance
 from datetime import datetime
+import databases
 
 
 class AccountManager:
 
     def __init__(self, *args, **kwargs):
         self.account = None
-        
         self.key = b'5n2-Wn3Zuutm6UcTLK_En1GRbdKx-cG7brrLgazsTbg='
         self.cipher_suite = Fernet(self.key)
 
-        self.user_conn = sqlite3.connect("Databases/Users.db")
-        self.user_cursor = self.user_conn.cursor()
-
-        self.info_conn = sqlite3.connect("Databases/HandicapData.db")
-        self.info_cursor = self.info_conn.cursor()
-
-        self.user_cursor.execute("""CREATE TABLE IF NOT EXISTS UserData(
-                                        user_id INTEGER PRIMARY KEY,
-                                        username TEXT,
-                                        password TEXT,
-                                        handicap REAL,
-                                        first_name TEXT,
-                                        last_name TEXT,
-                                        gender TEXT)
-                                         """)
-        self.user_conn.commit()
-
-        self.info_cursor.execute("""CREATE TABLE IF NOT EXISTS Rounds(
-                                round_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                user_id INTEGER,
-                                course_id INTEGER,
-                                course_name TEXT, 
-                                date TEXT, 
-                                tee_col TEXT,
-                                cr_sr TEXT, 
-                                score INTEGER, 
-                                differential REAL,
-                                type TEXT)""")
-        self.info_conn.commit()
-
     def login(self, username, password):
-        user = self.user_cursor.execute("SELECT * FROM UserData WHERE username=?", (username,))
-        user = user.fetchone()
+        user = databases.users.get_one("SELECT * FROM UserData WHERE username=?", (username,))
         if user:
             # get password associated with user; decrypt password; then compare to the given password
             # if the login was successful, the function will not raise any errors (will not return anything)
@@ -61,45 +29,43 @@ class AccountManager:
         self.account = None
 
     def change_password(self, username, new_password):
-        self.user_cursor.execute("""UPDATE UserData
+        databases.users.write("""UPDATE UserData
                                     SET password = ?
                                     WHERE username = ?
                                     """,
-                                 (self.encrypt(new_password), username))
-        self.user_conn.commit()
+                              (self.encrypt(new_password), username))
 
     def create_user(self, username, password, first, last, gender):
-        # must be longer than 8 characters
-        # must have at least one digit
-        if len(password) < 8 or not any(map(lambda e: e.isdigit(), password)):
-            raise ValueError("Password too weak")
-
         # search for username in UserData
         # if username already present, raise error
-        check = self.user_cursor.execute("SELECT username FROM UserData WHERE username=?", (username,))
-        if check.fetchone():
+        check = databases.users.get_one("SELECT username FROM UserData WHERE username=?", (username,))
+        if check:
             raise ValueError("Username taken")
 
+        # must be longer than 8 characters
+        # must have at least one digit and capital letter
+        if len(password) < 8 or not any(map(lambda e: e.isdigit(), password)) or password == password.lower():
+            raise ValueError("Password too weak")
+
         # update UserInfo table with user data
-        self.user_cursor.execute("""INSERT INTO UserData(username, password, first_name, last_name, gender)
+        databases.users.write("""INSERT INTO UserData(username, password, first_name, last_name, gender)
                                  VALUES (?, ?, ?, ?, ?)""",
-                                 (username, self.encrypt(password), first, last, gender))
-        self.user_conn.commit()
+                              (username, self.encrypt(password), first, last, gender))
 
     def delete_user(self, user_id):
-        self.user_cursor.execute("DELETE FROM UserData WHERE user_id=?", (user_id,))
-        self.user_conn.commit()
+        databases.users.write("DELETE FROM UserData WHERE user_id=?", (user_id,))
 
-        self.info_cursor.execute("DELETE FROM Rounds WHERE user_id=?", (user_id,))
-        self.info_conn.commit()
+        databases.users.write("DELETE FROM Rounds WHERE user_id=?", (user_id,))
 
-    def get_round_info(self, round_id):
-        self.info_cursor.execute("SELECT * FROM Rounds WHERE round_id=?", (round_id,))
-        return self.info_cursor.fetchone()
-
+    def get_round_info(self, round_id, column=None):
+        if column is not None:
+            results = databases.rounds.get_one("SELECT {0} FROM Rounds WHERE round_id={1}".format(column, round_id))
+            return results[0] if results else None
+        else:
+            return databases.rounds.get_one("SELECT * FROM Rounds WHERE round_id=?", (round_id, ))
+    
     def delete_round(self, round_id):
-        self.info_cursor.execute("DELETE FROM Rounds WHERE round_id=?", (round_id,))
-        self.info_conn.commit()
+        databases.rounds.write("DELETE FROM Rounds WHERE round_id=?", (round_id,))
 
     def encrypt(self, text):
         # convert text from string into bytestring, then encrypt it
@@ -120,17 +86,47 @@ class Account(AccountManager):
 
         self.username = username
 
-        self.user_id = self.get_info('user_id')
-        self.first_name = self.get_info('first_name')
-        self.last_name = self.get_info('last_name')
-        self.gender = self.get_info('gender')
+        self.user_id = self.get_user_info('user_id')
+        self.first_name = self.get_user_info('first_name')
+        self.last_name = self.get_user_info('last_name')
+        self.gender = self.get_user_info('gender')
 
         # update handicap and assign it to variable
         self.update_index()
 
-    def get_info(self, column):
+    def get_user_info(self, column):
         command = "SELECT {0} FROM UserData WHERE username='{1}'".format(column, self.username)
-        return self.user_cursor.execute(command).fetchone()[0]
+        return databases.users.get_one(command)[0]
+    
+    def update_round_info(self, round_id, date=None, score=None):
+        if date is not None:
+            try:
+                info = date.split("/")
+                if len(info) != 3\
+                or int(info[1]) > 12 or int(info[2]) > 31\
+                or len(info[0]) + len(info[1]) + len(info[2]) != 8:
+                    return
+
+                databases.rounds.write('UPDATE Rounds SET date=? WHERE round_id=?',
+                                                    (date, round_id))
+        
+            except (ValueError, AttributeError):
+                return
+
+        elif score is not None:
+            try:
+                if score < 18 or score > 999:
+                    return
+                cr = float(self.get_round_info(round_id, column="cr"))
+                sr = float(self.get_round_info(round_id, column="sr"))
+                
+                h = handicap.calculate_round_handicap(score, cr, sr)
+                databases.rounds.write('UPDATE Rounds SET score=?, differential=? WHERE round_id=?',
+                                                    (score, h, round_id))
+                self.update_index()
+
+            except ValueError:
+                return
 
     def update_index(self):
         rounds = self.get_rounds()
@@ -139,13 +135,14 @@ class Account(AccountManager):
         differentials = list(map(lambda r: r[-2], rounds))
 
         # calculate and properly format handicap index
-        not_formatted_handicap = Handicap.calculate_composite_handicap(differentials)
-        self.handicap = Handicap.format_handicap(not_formatted_handicap)
+        not_formatted_handicap = handicap.calculate_composite_handicap(differentials)
+        self.handicap = handicap.format_handicap(not_formatted_handicap)
 
         # update database with new handicap index
-        self.user_cursor.execute("UPDATE UserData SET handicap = ? WHERE user_id = ?",
+        databases.users.write("UPDATE UserData SET handicap = ? WHERE user_id = ?",
                                  (not_formatted_handicap, self.user_id))
-        self.user_conn.commit()
+    
+        return self.handicap
 
     def upload_info(self, course, tee, score, date, holes_played='18', round_type="H"):
         """Inputs user's data into Scores database"""
@@ -164,55 +161,60 @@ class Account(AccountManager):
                 raise ValueError("Invalid holes_played param")
 
             # check if 9 hole round is waiting to be paired
-            unpaired_round = self.info_cursor.execute("SELECT * FROM Rounds WHERE type = 'W'").fetchone()
+            unpaired_round = databases.rounds.get_one("SELECT * FROM Rounds WHERE type = 'W'")
 
             if unpaired_round:
                 round_type = "C"
-                unpaired_cr, unpaired_sr = unpaired_round[6].split('/')
+                unpaired_cr = unpaired_round[6]
+                unpaired_sr = unpaired_round[7]
                 unpaired_name = unpaired_round[3]
-                unpaired_score = unpaired_round[7]
+                unpaired_score = unpaired_round[8]
 
                 round_cr = round_cr + float(unpaired_cr)
                 round_sr = (round_sr + int(unpaired_sr)) // 2
                 round_sr = int(round_sr) + 1 if round_sr % 1 else int(round_sr)
-                round_name = unpaired_name + " / " + course.name
+                if unpaired_name != course.name:
+                    round_name = unpaired_name + " / " + course.name
+                else:
+                    round_name = course.name
                 score += unpaired_score
-                self.info_cursor.execute('DELETE FROM Rounds WHERE round_id = ?', (unpaired_round[0], ))
+                databases.rounds.write('DELETE FROM Rounds WHERE round_id = ?', (unpaired_round[0], ))
 
             # upload the 9 hole score, and wait for another nine hole score to pair it with
             else:
                 round_type = "W"
                 round_name = course.name
 
-        differential = Handicap.calculate_round_handicap(score, round_cr, round_sr)
-        self.info_cursor.execute("""INSERT INTO Rounds(user_id, course_id, course_name, date, tee_col, cr_sr, score, differential, type)
-                                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                                 (self.user_id, course.id, round_name, date, tee.color, '{}/{}'.format(round_cr, round_sr),
-                                  score, differential, round_type)
+        differential = handicap.calculate_round_handicap(score, round_cr, round_sr)
+        databases.rounds.write("""INSERT INTO Rounds(user_id, course_id, course_name, date, tee_col, cr, sr, score, differential, type)
+                                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                 (self.user_id, course.id, round_name, date, tee.color,
+                                  round_cr, round_sr, score, differential, round_type)
                                  )
-        self.info_conn.commit()
         self.update_index()
 
     def get_rounds(self, limit=20):
         """Returns a list of user's 20 most recent handicap differentials from Scores database"""
-        return self.info_cursor.execute("""SELECT * FROM Rounds
+        return databases.rounds.get_all("""SELECT * FROM Rounds
                                         WHERE user_id = ? AND
-                                        type != 'W'
+                                              type != 'W'
                                         ORDER BY date DESC
                                         LIMIT ?""",
-                                        (self.user_id, limit)
-                                        ).fetchall()
+                                        (self.user_id, limit))
 
-    def get_suggested_courses(self):
-        near = list(map(lambda c: c[0], Distance.within(15, limit=5)))
+    def get_suggested_courses(self, limit=10):
+        """Returns the course ids of 10 most relevant courses"""
+        # relevant score
+        #   decreases directly with distance
+        #   decreases directly with days_since
+        #   increases directly with times played
+        #   = c1*timesPlayed / (c2*daysSince  * c3*distance)
         
         today = datetime.today()
         recent_rounds = self.get_rounds(limit=30)
-        rounds = dict()
-        ids = dict()
+        rounds = dict()     # contains popularity score of each course_id
         for i, round in enumerate(recent_rounds):
-            course_id, course, date, type = round[2], round[3], round[4], round[9]
-            ids[course] = course_id
+            course_id, date, type = round[2], round[4], round[9]
             
             y1, m1, d1 = map(int, date.split("/"))
             y2, m2, d2 = today.year, today.month, today.day
@@ -222,27 +224,23 @@ class Account(AccountManager):
                 days_since = 0.5
             
             if type == "C":
+                # ignore combined scores (two courses)
                 continue
             
-            if course not in rounds:
-                rounds[course] = (len(recent_rounds) - i) / (days_since * 0.5)
+            if course_id not in rounds:
+                rounds[course_id] = (len(recent_rounds) - i) / days_since
             else:
-                rounds[course] += 12 * (len(recent_rounds) - i) / (days_since * 0.5)
-    
-        # five most popular courses
-        # convert dict to sorted list, take top 5, get course name, convert back to list
-        # the convert list of course names to course ids
-        populars = list(map(lambda r: r[0], sorted(rounds.items(), key=lambda r: r[1], reverse=True)))
-        populars = list(map(lambda c: ids[c], populars))
-        
-        
-        # compile list of top 5 popular courses not featured in "near"
-        popular = []
-        for course in populars:
-            if len(popular) == 5:
-                break
-            if course not in near:
-                popular.append(course)
-        
-        return near + popular
+                rounds[course_id] += 10 * (len(recent_rounds) - i) / days_since
 
+        #
+        near = distance.courses_within(30, limit=10)
+        for course_id, dist in near:
+            if course_id not in rounds:
+                rounds[course_id] = 30 / dist
+            else:
+                rounds[course_id] *= 30 / dist
+
+        # sort dict by relevant score, then convert to list of course_ids
+        relevant_ids = list(map(lambda r: r[0], sorted(rounds.items(), key=lambda r: r[1], reverse=True)))
+
+        return relevant_ids[:limit]

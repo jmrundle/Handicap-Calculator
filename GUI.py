@@ -1,10 +1,4 @@
 # usr/bin/python2.7
-
-"""
-I realize this is a fucking mess.  Somehow works tho
-"""
-
-
 try:
     from Tkinter import *
     import ttk
@@ -20,7 +14,7 @@ except ImportError:
     from tkinter import messagebox as tkMessageBox
 
 import UserAPI
-import Handicap
+import handicap
 
 
 ACCOUNT_MANAGER = UserAPI.AccountManager()
@@ -263,9 +257,9 @@ class MainScreen(Frame):
         colors = ['#C2CAFD', '#8E9AE1']
         self.rounds = account.get_rounds()
         for i, round in enumerate(self.rounds):
-            round_id, _, _, course_name, date, _, cr_sr, score, diff, round_type = round
+            round_id, _, _, course_name, date, _, cr, sr, score, diff, round_type = round
             color = colors[i % 2]
-            info = [course_name, date, cr_sr, str(score) + round_type, diff]
+            info = [course_name, date, str(cr) + "/" + str(sr), str(score) + round_type, diff]
 
             for j, item in enumerate(info):
                 l = Label(self.canvas_frame, text=str(item), bg=color, font=("Calibri", 18), padx=7, wraplength=140)
@@ -297,52 +291,30 @@ class MainScreen(Frame):
         entry.bind("<Button-2>", lambda e: entry.grid_forget())
 
     def change_text(self, text_var, row, col):
+        round_id = self.rounds[row][0]
+        
       # changing date column
         if col == 1:
-            info = text_var.get().split('/')
-            try:
-                if len(info) != 3\
-                or int(info[1]) > 12 or int(info[2]) > 31\
-                or len(info[0]) + len(info[1]) + len(info[2]) != 8:
-                    self.window.disp_msg("Invalid Entry.\nDate must be in YYYY/MM/DD format")
-                    return
-
-                date = text_var.get()
-                round_id = self.rounds[row][0]  # round = self.rounds[row], then round_id = round[0]
-                ACCOUNT_MANAGER.info_cursor.execute('UPDATE Rounds SET date=? WHERE round_id=?',
-                                                    (date, round_id))
-                ACCOUNT_MANAGER.info_conn.commit()
-
-                self.forget_widgets()
-                self.load_widgets()
-
-            except ValueError:
-                return
+            date = text_var.get()
+            ACCOUNT_MANAGER.account.update_round_info(round_id, date=date)
 
         # changing score column
         if col == 3:
             try:
                 score = int(text_var.get())
-                if score < 18 or score > 999:
-                    self.window.disp_msg("Score must be between 18-999.")
-                    return
-                round_id = self.rounds[row][0]
-                cr, sr = map(float, ACCOUNT_MANAGER.get_round_info(round_id)[6].split('/'))
-                h = Handicap.calculate_round_handicap(score, cr, sr)
-
-                ACCOUNT_MANAGER.info_cursor.execute('UPDATE Rounds SET score=?, differential=? WHERE round_id=?',
-                                                    (score, h, round_id))
-                ACCOUNT_MANAGER.info_conn.commit()
-
-                self.forget_widgets()
-                self.load_widgets()
             except ValueError:
-                self.window.disp_msg("Score must be an integer.")
+                self.window.disp_msg("Score must be an integer")
                 return
+            ACCOUNT_MANAGER.account.update_round_info(round_id, score=score)
+
+        self.forget_widgets()
+        self.load_widgets()
 
     def delete_round(self, id):
-        info = ACCOUNT_MANAGER.get_round_info(id)
-        ans = tkMessageBox.askyesno("Handicap Calculator", "Would you like to delete this round?\n\n{}: {} ({})".format(info[3], info[7], info[4]))
+        course_name = ACCOUNT_MANAGER.get_round_info(id, column="course_name")
+        date = ACCOUNT_MANAGER.get_round_info(id, column="date")
+        score = ACCOUNT_MANAGER.get_round_info(id, column="score")
+        ans = tkMessageBox.askyesno("Handicap Calculator", "Would you like to delete this round?\n\n{}: {} ({})".format(course_name, score, date))
         if ans:
             ACCOUNT_MANAGER.delete_round(id)
             ACCOUNT_MANAGER.account.update_index()
@@ -396,7 +368,7 @@ class CourseSearch(Frame):
     
     def load_suggested(self):
         suggested = ACCOUNT_MANAGER.account.get_suggested_courses()
-        self.courses = map(lambda id: Handicap.get_course_from_id(id), suggested)
+        self.courses = map(lambda id: handicap.get_course_from_id(id), suggested)
         self.listbox.delete(0, END)
         for course in self.courses:
             option = "{} ({}, {})".format(course.name, course.city, course.state)
@@ -406,7 +378,7 @@ class CourseSearch(Frame):
         if not text or text == " ":
             self.load_suggested()
             return
-        self.courses = Handicap.get_courses_from_name(text)
+        self.courses = handicap.get_courses_from_name(text)
         self.listbox.delete(0, END)
         for course in self.courses:
             option = "{} ({}, {})".format(course.name, course.city, course.state)
@@ -465,7 +437,7 @@ class EnterScore(Frame):
 
         account = ACCOUNT_MANAGER.account
         self.course = self.window.course
-        self.tees = Handicap.get_tees_from_id(self.course.id, gender=account.gender)
+        self.tees = handicap.get_tees_from_id(self.course.id, gender=account.gender)
         max_len = 0
         for tee in self.tees:
             option = "{}: {}/{}".format(tee.color, tee.cr, tee.sr)
@@ -566,7 +538,7 @@ class EnterScore(Frame):
         ACCOUNT_MANAGER.account.upload_info(self.course, tee, score, date,
                                             holes_played=holes_count, round_type=round_type)
 
-                                            #self.forget_widgets()
+        # self.forget_widgets()
         self.window.set_frame(MainScreen)
 
     def forget_widgets(self):
