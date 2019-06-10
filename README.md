@@ -1,6 +1,6 @@
 # HandicapCalculator
 
-A golf handicap is a number that represents a golfer's individual skill level, and it can be used for golfers of different skill levels to compete at an even playing field.  The Handicap Calculator uses an individual's scoring data and USGA difficulty ratings to calculate a user's golf handicap.
+A golf handicap is a number that represents an individual golfer's scoring ability, and it can be used for golfers of different skill levels to compete at an even playing field.  The Handicap Calculator tracks a user's scoring data and USGA course difficulty ratings to calculate and manage a user's golf handicap.
 
 
 # Scripts
@@ -8,7 +8,7 @@ A golf handicap is a number that represents a golfer's individual skill level, a
 - Contains a variety of functions that manage the calculation of a handicap
 - Supports both command line and GUI interfaces
 ##### distance.py
-- Manages the calculation of distances between latitude and longitudinal values of courses
+- Manages the calculation of distances between the latitude and longitude values of courses
 ##### UserAPI.py
 - Manages accounts and most database interactions
 ##### GUI.py
