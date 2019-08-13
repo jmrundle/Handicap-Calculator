@@ -1,19 +1,23 @@
-# usr/bin/python2.7
+# python2
 try:
     from Tkinter import *
     import ttk
     import tkMessageBox
 
-    from PIL import ImageTk, Image
-    from datetime import datetime
-
-# usr/bin/python3
+# python3
 except ImportError:
     from tkinter import *
     from tkinter import ttk
     from tkinter import messagebox as tkMessageBox
 
-import AccountManager
+try:
+    from PIL import ImageTk, Image
+except ImportError:
+    pass
+
+
+from datetime import datetime
+from AccountManager import manager
 import handicap
 
 
@@ -41,7 +45,8 @@ class MainWindow(Tk):
             self.frames[FrameClass] = frame
         
         self.course = None
-        self.set_frame(Login)
+        manager.login('jrundle', 'asdfghjkl1')
+        self.set_frame(MainScreen)
         self.mainloop()
 
     def set_frame(self, title):
@@ -60,6 +65,7 @@ class MainWindow(Tk):
         tkMessageBox.showinfo("Handicap Calculator", msg)
 
 
+# noinspection PyAttributeOutsideInit
 class Login(Frame):
     def __init__(self, parent_frame, window):
         Frame.__init__(self, parent_frame, width=800, height=500)
@@ -115,7 +121,7 @@ class Login(Frame):
             return
 
         try:
-            AccountManager.login(username, password)
+            manager.login(username, password)
             self.username_entry.delete(0, END)
             self.password_entry.delete(0, END)
             self.window.set_frame(MainScreen)
@@ -202,7 +208,7 @@ class CreateAccount(Frame):
             return
 
         try:
-            AccountManager.create_user(username, password, first_name, last_name, gender)
+            manager.create_user(username, password, first_name, last_name, gender)
             self.window.set_frame(Login)
         except ValueError as e:
             self.window.disp_msg(e)
@@ -214,9 +220,12 @@ class MainScreen(Frame):
         self.window = window
 
     def load_widgets(self):
+        self.account = manager.get_account()
+        acc = self.account
+
         self.topleft = Frame(self, bg='#8cd9b3', highlightbackground="grey", highlightthickness=2)
         label = Label(self.topleft,
-                      text='{} {}\n{}'.format(AccountManager.account.first_name, AccountManager.account.last_name, AccountManager.account.handicap),
+                      text='{} {}\n{}'.format(acc.first_name, acc.last_name, acc.handicap),
                       font=("Calibri", 30), padx=10, relief=GROOVE)
         label.place(anchor=CENTER, relx=0.5, rely=0.25)
         button = Button(self.topleft, text='Edit Account',
@@ -251,11 +260,14 @@ class MainScreen(Frame):
             self.canvas_frame.grid_columnconfigure(index=i, weight=1)
 
         colors = ['#C2CAFD', '#8E9AE1']
-        self.rounds = AccountManager.account.get_rounds()
+        self.rounds = manager.get_rounds()
         for i, round in enumerate(self.rounds):
-            round_id, _, _, course_name, date, _, cr, sr, score, diff, round_type = round
             color = colors[i % 2]
-            info = [course_name, date, str(cr) + "/" + str(sr), str(score) + round_type, diff]
+            info = [round.course.name,
+                    round.date.strftime("%b %-d, %Y"),
+                    str(round.tee.cr) + "/" + str(round.tee.sr),
+                    str(round.score) + round.type,
+                    round.differential]
 
             for j, item in enumerate(info):
                 l = Label(self.canvas_frame, text=str(item), bg=color, font=("Calibri", 18), padx=7, wraplength=140)
@@ -264,7 +276,7 @@ class MainScreen(Frame):
                 # and set it with the same value as the label
                 l.bind("<Button-2>",lambda e, row=i, col=j, value=item: self.create_entry(row, col, value=value))
                 # when a label is left-clicked, get permission from user, then delete round
-                l.bind('<Button-1>', lambda e, id=round_id: self.delete_round(id))
+                l.bind('<Button-1>', lambda e, id=round.id: self.delete_round(id))
 
         self.topleft.place(anchor='nw', x=0, y=0, relwidth=0.4, relheight=0.7)
         self.bottomleft.place(anchor='nw', x=0, rely=0.7, relwidth=0.4, relheight=0.3)
@@ -292,7 +304,7 @@ class MainScreen(Frame):
       # changing date column
         if col == 1:
             date = text_var.get()
-            AccountManager.account.update_round_info(round_id, date=date)
+            self.account.update_round_info(round_id, date=date)
 
         # changing score column
         if col == 3:
@@ -301,25 +313,25 @@ class MainScreen(Frame):
             except ValueError:
                 self.window.disp_msg("Score must be an integer")
                 return
-            AccountManager.account.update_round_info(round_id, score=score)
+            self.account.update_round_info(round_id, score=score)
 
         self.forget_widgets()
         self.load_widgets()
 
     def delete_round(self, id):
-        course_name = AccountManager.get_round_info(id, column="course_name")
-        date = AccountManager.get_round_info(id, column="date")
-        score = AccountManager.get_round_info(id, column="score")
+        course_name = self.account.get_round_info(id, column="course_name")
+        date = self.account.get_round_info(id, column="date")
+        score = self.account.get_round_info(id, column="score")
         ans = tkMessageBox.askyesno("Handicap Calculator", "Would you like to delete this round?\n\n{}: {} ({})".format(course_name, score, date))
         if ans:
-            AccountManager.account.delete_round(id)
+            self.account.delete_round(id)
             self.forget_widgets()
             self.load_widgets()
         else:
             pass
 
     def log_out(self):
-        AccountManager.log_out()
+        manager.log_out()
 
         self.forget_widgets()
         self.window.set_frame(Login)
@@ -357,12 +369,12 @@ class CourseSearch(Frame):
 
         self.subframe.pack(fill=BOTH, pady=30)
 
-        self.button = Button(self, text='BACK', font=("Calibri", 25), width=6, bg='#8cd9b3', bd=3, command=lambda *args: (self.forget_widgets(),                                                                      self.window.set_frame(MainScreen)))
+        self.button = Button(self, text='BACK', font=("Calibri", 25), width=6, bg='#8cd9b3', bd=3, command=lambda *args: (self.forget_widgets(), self.window.set_frame(MainScreen)))
         self.button.pack()
     
     
     def load_suggested(self):
-        suggested = AccountManager.account.get_suggested_courses()
+        suggested = manager.get_suggested_courses()
         self.courses = map(lambda id: handicap.get_course_from_id(id), suggested)
         self.listbox.delete(0, END)
         for course in self.courses:
@@ -383,7 +395,7 @@ class CourseSearch(Frame):
         try:
             course = self.courses[self.listbox.curselection()[0]]
             self.course_entry.delete(0, END)
-        except IndexError or AttributeError:
+        except (IndexError, AttributeError):
             return
 
         self.window.course = course
@@ -431,7 +443,7 @@ class EnterScore(Frame):
         self.listbox.pack(side=LEFT, fill=BOTH, expand=True)
 
         self.course = self.window.course
-        self.tees = handicap.get_tees_from_id(self.course.id, gender=AccountManager.account.gender)
+        self.tees = handicap.get_tees_from_id(self.course.id, gender=manager.get_account().gender)
         max_len = 0
         for tee in self.tees:
             option = "{}: {}/{}".format(tee.color, tee.cr, tee.sr)
@@ -520,17 +532,17 @@ class EnterScore(Frame):
         except ValueError:
             return
 
-        month = self.month.get()
-        month = month if int(month) >= 10 else "0" + month
-        day = self.day.get()
-        day = day if int(day) >= 10 else "0" + day
-        date = "{}/{}/{}".format(self.year.get(), month, day)
+        year = int(self.year.get())
+        month = int(self.month.get())
+        day = int(self.day.get())
+        now = datetime.now()
+
+        date = datetime(year, month, day, now.hour, now.minute, now.second).isoformat()
 
         round_type = self.round_type.get()[0]
         holes_count = self.holes_count.get()
 
-        AccountManager.account.upload_info(self.course, tee, score, date,
-                                           holes_played=holes_count, round_type=round_type)
+        manager.upload_info(tee, score, date, holes_played=holes_count, round_type=round_type)
 
         # self.forget_widgets()
         self.window.set_frame(MainScreen)

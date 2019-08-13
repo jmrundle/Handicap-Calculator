@@ -1,6 +1,6 @@
 import math                 # distance functions
 from geocoder import ip     # get latlong val of current location
-import databases
+import database as db
 
 current_pos = ip("me").latlng
 
@@ -14,14 +14,14 @@ def between(p1, p2):
         lat2 = math.radians(p2[0])
         dx = math.radians(p2[0] - p1[0])
         dy = math.radians(p2[1] - p1[1])
-        
+
         a = math.sin(dx/2) * math.sin(dx/2) + \
             math.cos(lat1) * math.cos(lat2) * \
             math.sin(dy/2) * math.sin(dy/2)
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
         return round(radius * c, 1)
 
-    except (TypeError, ValueError):
+    except:
         return -1
 
 
@@ -40,12 +40,12 @@ def courses_within(max_dist, limit=20, from_pos=None):
             from_pos = current_pos
     
     ids = []
-    for id, lat, long in databases.courses.get_all("SELECT id, latitude, longitude FROM CourseData"):
+    for course in db.courses.get_all("SELECT CourseID, Latitude, Longitude FROM CourseData"):
         try:
-            to_pos = (float(lat), float(long))
+            to_pos = (float(course.latitude), float(course.longitude))
             distance = between(from_pos, to_pos)
             if distance <= max_dist:
-                ids.append((id, distance))
+                ids.append((course.id, distance))
         except ValueError:
             # for courses without a latlong value ("N/A")
             pass

@@ -1,66 +1,31 @@
 import distance
-import databases
+import database as db
+import Models
 
 current_location = distance.current_pos
 
 
-class Tee:
-    def __init__(self, col, front_cr, front_sr, back_cr, back_sr, gender):
-        self.color = col
-        
-        self.front_cr = float(front_cr)
-        self.front_sr = int(front_sr)
-        self.back_cr = float(back_cr)
-        self.back_sr = int(back_sr)
-
-        # total cr is sum of each
-        self.cr = round(self.front_cr + self.back_cr, 1)
-        # total sr is integer average of each
-        # ex: 112.5 -> 113, 112.0 -> 112
-        self.sr = int(round((self.front_sr + self.back_sr) / 2.0))
-        
-        self.gender = gender
-
-
-class Course:
-    def __init__(self, id, name, state, city, lat, long):
-        self.id = id
-        self.name = name
-        self.state = state
-        self.city = city
-        self.distance = distance.between((lat, long), current_location)
-
-
 def get_courses_from_name(course_name, limit=25):
     """Queries search from course database then returns a list of course objects"""
-    courses = []
 
-    for course in databases.courses.get_all("""SELECT id, name, state, city, latitude, longitude FROM CourseData WHERE
-                                    name LIKE '%{0}%' LIMIT {1}""".format(course_name, limit)):
-        courses.append(Course(*course))
+    query = "SELECT * FROM CourseData WHERE Name LIKE '%{0}%' LIMIT {1}".format(course_name, limit)
+    courses = db.courses.get_all(query)
 
     return sorted(courses, key=lambda c: c.distance)
 
 
 def get_course_from_id(id):
-    return Course(*databases.courses.get_one("""SELECT id, name, state, city, latitude, longitude 
-                                                FROM CourseData 
-                                                WHERE id = ?""", (id,)))
+    query = "SELECT * FROM CourseData WHERE CourseID = ?"
+    return db.courses.get_one(query, id)
 
 
 def get_tees_from_id(id, gender=""):
     """Uses course's id to return a list of tee objects"""
     # by default, this method will not filter by gender
     # but, you can by changing the gender keyword arg to 'M' or 'F'
-    tees = list()
-    for tee in databases.courses.get_all("""SELECT * 
-                                            FROM TeeData 
-                                            WHERE course_id = {0} 
-                                            AND 
-                                            gender LIKE '%{1}%'""".format(id, gender)):
-        tees.append(Tee(*tee[1:]))  # unpack everything except course_id
 
-    return tees
+    query = "SELECT * FROM TeeData WHERE CourseID = {0} AND Gender LIKE '%{1}%'""".format(id, gender)
+    return db.tees.get_all(query)
 
 
 def calculate_round_handicap(score, cr, sr):
@@ -91,10 +56,12 @@ def calculate_composite_handicap(rounds):
 
 def format_handicap(num):
     """Formats handicap into a string"""
-    try:
-        return str(num) if num > -0.05 else '+' + str(abs(num))
-    except (TypeError, ValueError):
+    if isinstance(num, str):
         return num
+    if isinstance(num, int):
+        return str(num) if num > -0.05 else '+' + str(abs(num))
+
+    return TypeError("Invalid handicap argument")
 
 
 # --------- Methods for output via command line --------- #
@@ -103,7 +70,7 @@ def format_handicap(num):
 def print_courses_table(courses):
     print()
     for i, course in enumerate(courses):
-        if isinstance(course, Course):
+        if isinstance(course, Models.Course):
             print("{}. {} ({}, {})".format(i + 1, course.name, course.state, course.city))
 
 
@@ -112,7 +79,7 @@ def print_tee_info(tees):
     print("Men's:")
     
     for i, tee in enumerate(tees):
-        if isinstance(tee, Tee):
+        if isinstance(tee, Models.Tee):
             # used to format men's tees under 'Men" header and women's tees under "Women" header
             if men and tee.gender == 'F':
                 men = False
