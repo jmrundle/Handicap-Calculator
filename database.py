@@ -2,9 +2,21 @@
 database.py
 """
 import sqlite3
-import Models
+import models
+import os
 
-# TODO: method to add -> decast from object
+# TODO: method to insert data -> decast from python object
+
+
+DIR = "/Databases"
+
+EXT = ".db"
+
+COURSES_DB_NAME = "Courses"
+HANDICAP_DB_NAME = "HandicapData"
+
+COURSES_DB = os.path.join(DIR, COURSES_DB_NAME + EXT)
+HANDICAP_DB = os.path.join(DIR, HANDICAP_DB_NAME + EXT)
 
 
 class Connection:
@@ -13,7 +25,20 @@ class Connection:
         write: used to insert information into the database (returns None)
         get: used to pull information from the database (returns a list)
     """
-    def __init__(self, path):
+    def __init__(self, file_name):
+        # check using working directory as reference
+        if os.path.isfile(file_name):
+            path = file_name
+
+        # check using database directory as reference
+        elif os.path.isfile(os.path.join(DIR, file_name)):
+            path = os.path.join(DIR, file_name)
+
+        # give up
+        else:
+            raise TypeError("File not found")
+
+        self.file_name = file_name
         self.path = path
         self.conn = sqlite3.connect(path)
 
@@ -59,7 +84,12 @@ Map sqlite query results to python object
 
 class Mapping(Connection):
     def __init__(self, _class, db_path):
+        """Maps a query result from a 'db_path' to a '_class' object"""
+        # base database connection
         Connection.__init__(self, db_path)
+
+        # first, map sqlite result to sqlite3.Row object
+        # the mapped class must then take a sqlite3.Row object as its only input
         self.conn.row_factory = sqlite3.Row
         self._class = _class
 
@@ -75,14 +105,15 @@ class Mapping(Connection):
         return results
 
 
-courses = Mapping(Models.Course, "Databases/Courses.db")
-tees = Mapping(Models.Tee, "Databases/Courses.db")
-users = Mapping(Models.User, "Databases/HandicapData.db")
-rounds = Mapping(Models.Round, "Databases/HandicapData.db")
+# pre-made mappings to use upon import
+courses = Mapping(models.Course, COURSES_DB)
+tees = Mapping(models.Tee, COURSES_DB)
+users = Mapping(models.User, HANDICAP_DB)
+rounds = Mapping(models.Round, HANDICAP_DB)
 
 
 def init_db():
-    handicap_data = Connection("Databases/Users.db")
+    handicap_data = Connection(HANDICAP_DB)
     handicap_data.write("""
         CREATE TABLE IF NOT EXISTS "Users" ( 
         `UserID` INTEGER, 

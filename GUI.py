@@ -15,10 +15,12 @@ try:
 except ImportError:
     pass
 
-
 from datetime import datetime
-from AccountManager import manager
+from accountManager import AccountManager
 import handicap
+
+
+manager = AccountManager()
 
 
 class MainWindow(Tk):
@@ -220,8 +222,7 @@ class MainScreen(Frame):
         self.window = window
 
     def load_widgets(self):
-        self.account = manager.get_account()
-        acc = self.account
+        acc = manager.get_account()
 
         self.topleft = Frame(self, bg='#8cd9b3', highlightbackground="grey", highlightthickness=2)
         label = Label(self.topleft,
@@ -304,7 +305,7 @@ class MainScreen(Frame):
       # changing date column
         if col == 1:
             date = text_var.get()
-            self.account.update_round_info(round_id, date=date)
+            manager.update_round_info(round_id, date=date)
 
         # changing score column
         if col == 3:
@@ -313,18 +314,18 @@ class MainScreen(Frame):
             except ValueError:
                 self.window.disp_msg("Score must be an integer")
                 return
-            self.account.update_round_info(round_id, score=score)
+            manager.update_round_info(round_id, score=score)
 
         self.forget_widgets()
         self.load_widgets()
 
     def delete_round(self, id):
-        course_name = self.account.get_round_info(id, column="course_name")
-        date = self.account.get_round_info(id, column="date")
-        score = self.account.get_round_info(id, column="score")
-        ans = tkMessageBox.askyesno("Handicap Calculator", "Would you like to delete this round?\n\n{}: {} ({})".format(course_name, score, date))
+        round = manager.get_round(id)
+        ans = tkMessageBox.askyesno("Handicap Calculator",
+                                    "Would you like to delete this round?\n\n{}: {} ({})"
+                                    .format(round.course_name, round.score, round.date))
         if ans:
-            self.account.delete_round(id)
+            manager.delete_round(id)
             self.forget_widgets()
             self.load_widgets()
         else:
@@ -443,7 +444,7 @@ class EnterScore(Frame):
         self.listbox.pack(side=LEFT, fill=BOTH, expand=True)
 
         self.course = self.window.course
-        self.tees = handicap.get_tees_from_id(self.course.id, gender=manager.get_account().gender)
+        self.tees = handicap.get_course_tees(self.course.id, gender=manager.get_account().gender)
         max_len = 0
         for tee in self.tees:
             option = "{}: {}/{}".format(tee.color, tee.cr, tee.sr)
@@ -542,7 +543,7 @@ class EnterScore(Frame):
         round_type = self.round_type.get()[0]
         holes_count = self.holes_count.get()
 
-        manager.upload_info(tee, score, date, holes_played=holes_count, round_type=round_type)
+        manager.upload_round_info(tee, score, date, holes_played=holes_count, round_type=round_type)
 
         # self.forget_widgets()
         self.window.set_frame(MainScreen)

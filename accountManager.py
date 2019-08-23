@@ -1,8 +1,10 @@
 import handicap
-from cryptography.fernet import Fernet
 import distance
-from datetime import datetime
+import models
 import database as db
+
+from cryptography.fernet import Fernet
+from datetime import datetime
 import os
 
 
@@ -23,12 +25,12 @@ class AccountManager:
     def __init__(self):
         self._account = None
 
-        key = os.environ.get('HANDICAP_KEY').encode()
+        key = os.environ.get('HANDICAP_KEY', None)
         if key is None:
-            key_str = Fernet.generate_key()
-            os.environ['HANDICAP_KEY'] = key_str
-            key = key_str.encode()
-        self._cipher_suite = Fernet(key)
+            key = Fernet.generate_key()
+            os.environ['HANDICAP_KEY'] = key
+
+        self._cipher_suite = Fernet(encode(key))
     
     def _encrypt(self, text):
         """Encrypts password"""
@@ -59,10 +61,10 @@ class AccountManager:
         else:
             raise ValueError("No user with the username '{}'.".format(username))
 
-        self._account = Account(user)
+        self._account = user
 
     def log_out(self):
-        """Reset the global account variable"""
+        """Reset the internal account variable"""
         self._account = None
 
     def change_password(self, username, new_password):
@@ -87,56 +89,15 @@ class AccountManager:
                        "VALUES (?, ?, ?, ?, ?)",
                        (username, self._encrypt(password), first, last, gender))
 
-    def delete_user(self, user_id):
-        """Delete a user and their rounds from the database"""
-        db.users.write("DELETE FROM Users WHERE UserID=?", user_id)
-        db.users.write("DELETE FROM Rounds WHERE UserID=?", user_id)
-
-    def get_round_info(self, round_id, column=None):
-        """Gets information about a given round in the database"""
-        if column is not None:
-            results = db.rounds.get_one("SELECT {0} FROM Rounds " +
-                                        "WHERE RoundID={1}""".format(column, round_id))
-            return results[0] if results else None
-        else:
-            return db.rounds.get_one("SELECT * FROM Rounds WHERE RoundID=?", round_id)
-
-    def update_round_info(self, round_id, date=None, score=None):
-        """Update the date and/or score column of one of the user's rounds"""
-        if date is not None:
-            try:
-                info = date.split("/")
-                if len(info) != 3 \
-                        or int(info[1]) > 12 or int(info[2]) > 31 \
-                        or len(info[0]) + len(info[1]) + len(info[2]) != 8:
-                    return
-
-                db.rounds.write("UPDATE Rounds SET Date=? WHERE RoundID=?", (date, round_id))
-
-            except (ValueError, AttributeError):
-                return
-
-        elif score is not None:
-            try:
-                if score < 18 or score > 999:
-                    return
-                cr = float(self.get_round_info(round_id, column="cr"))
-                sr = float(self.get_round_info(round_id, column="sr"))
-
-                h = handicap.calculate_round_handicap(score, cr, sr)
-                db.rounds.write("UPDATE Rounds SET Score=?, Differential=? WHERE RoundID=?",
-                               (score, h, round_id))
-                self._account.update_handicap()
-
-            except ValueError:
-                return
-
-    def upload_info(self, tee, score, date, holes_played='18', round_type="H"):
+    def upload_round_info(self, tee, score, date, holes_played='18', round_type="H", user=None):
         """Inputs user's data into Scores database"""
         # TODO: fix logic for 9 hole round pairings
 
-        if not self.is_logged_in():
-            return ValueError("Account Not Logged In")
+        if user is None:
+            user = self.get_account()
+
+        if not isinstance(user, models.User):
+            raise TypeError("Invalid 'user' parameter.  Must be of type Models.User.")
 
         if holes_played == '18':
             round_cr = tee.cr
@@ -153,7 +114,7 @@ class AccountManager:
 
             # check if 9 hole round is waiting to be paired
             unpaired_round = db.rounds.get_one("SELECT * FROM Rounds WHERE Type = 'W' AND UserID = ?",
-                                               self._account.id)
+                                               user.id)
 
             if unpaired_round:
                 round_type = "C"
@@ -174,23 +135,57 @@ class AccountManager:
         differential = handicap.calculate_round_handicap(score, round_cr, round_sr)
         db.rounds.write("INSERT INTO Rounds(UserID, TeeID, Score, DateTime, Differential, Type) " +
                         "VALUES (?, ?, ?, ?, ?, ?)",
-                        (self._account.id, tee.id, score, date, differential, round_type))
-        self._account.update_handicap()
+                        (user.id, tee.id, score, date, differential, round_type))
 
-    def get_rounds(self, limit=20):
+        user.update_handicap()
+
+    def update_round_info(self, round_id, date=None, score=None):
+        """Update the date and/or score column of one of the user's rounds"""
+        if date is not None:
+            try:
+                info = date.split("/")
+                if len(info) != 3 \
+                        or int(info[1]) > 12 or int(info[2]) > 31 \
+                        or len(info[0]) + len(info[1]) + len(info[2]) != 8:
+                    return
+
+                db.rounds.write("UPDATE Rounds SET Date=? WHERE RoundID=?", (date, round_id))
+
+            except (ValueError, AttributeError):
+                return
+
+        elif score is not None:
+            try:
+                if score < 18 or score > 999:
+                    return
+
+                round = self.get_round(round_id)
+                cr = round.cr
+                sr = round.sr
+                h = handicap.calculate_round_handicap(score, cr, sr)
+
+                db.rounds.write("UPDATE Rounds SET Score=?, Differential=? WHERE RoundID=?",
+                                (score, h, round_id))
+                round.user.update_handicap()
+
+            except ValueError:
+                return
+
+    def get_rounds(self, user=None, limit=20):
         """Returns a list of user's 20 most recent handicap differentials from Scores database"""
+        if user is None:
+            user = self.get_account()
+
+        if not isinstance(user, models.User):
+            raise TypeError("Invalid 'user' parameter.  Must be of type Models.User.")
+
         return db.rounds.get_all("SELECT * FROM Rounds " +
                                  "WHERE UserID = ? AND Type != 'W' " +
                                  "ORDER BY DateTime DESC " +
                                  "LIMIT ?",
-                                 (self._account.id, limit))
+                                 (user.id, limit))
 
-    def delete_round(self, round_id):
-        """Delete one of the user's rounds from the database"""
-        db.rounds.write("DELETE FROM Rounds WHERE RoundID=?", round_id)
-        self._account.update_handicap()
-
-    def get_suggested_courses(self, limit=10):
+    def get_suggested_courses(self, user=None, limit=10):
         """Returns the course ids of 10 most relevant courses"""
         # relevant score
         #   decreases directly with distance
@@ -198,8 +193,14 @@ class AccountManager:
         #   increases directly with times played
         #   = c1*timesPlayed / (c2*daysSince  * c3*distance)
 
+        if user is None:
+            user = self.get_account()
+
+        if not isinstance(user, models.User):
+            raise TypeError("Invalid 'user' parameter.  Must be of type Models.User.")
+
         today = datetime.today()
-        recent_rounds = self.get_rounds(limit=30)
+        recent_rounds = self.get_rounds(user=user, limit=30)
         rounds = dict()  # contains popularity score of each course_id
         for i, round in enumerate(recent_rounds):
 
@@ -227,49 +228,22 @@ class AccountManager:
 
         return relevant_ids[:limit]
 
+    @staticmethod
+    def delete_round(round_id):
+        """Delete a round from the database, then update that user's handicap"""
+        round = db.rounds.get("SELECT * FROM Rounds WHERE RoundID = ?", round_id)
 
-# shortcut to access functionality
-manager = AccountManager()
+        db.rounds.write("DELETE FROM Rounds WHERE RoundID=?", round.id)
 
+        round.user.update_handicap()
 
-# --------------------------------------------- #
-# -------------- ACCOUNT CLASS ---------------- #
-# --------------------------------------------- #
+    @staticmethod
+    def delete_user(user_id):
+        """Delete a user and their rounds from the database"""
+        db.users.write("DELETE FROM Users WHERE UserID=?", user_id)
+        db.users.write("DELETE FROM Rounds WHERE UserID=?", user_id)
 
-
-class Account:
-    def __init__(self, user, account_manager=manager):
-        self.manager = account_manager
-
-        # TODO: make Account class a child class of Models.User (or just make new model)
-        self.id = user.id
-        self.username = user.username
-        self.first_name = user.first_name
-        self.last_name = user.last_name
-        self.gender = user.gender
-
-    @property
-    def handicap(self):
-        """The user's handicap"""
-        return self.update_handicap()
-
-    def update_handicap(self):
-        """Returns the updated version of the user's handicap"""
-        rounds = self.manager.get_rounds()
-
-        # compile round tuples to list of differentials
-        differentials = list(map(lambda r: r.differential, rounds))
-
-        # calculate and properly format handicap index
-        not_formatted_handicap = handicap.calculate_composite_handicap(differentials)
-        formatted_handicap = handicap.format_handicap(not_formatted_handicap)
-
-        # update database with new handicap index
-        db.users.write("UPDATE Users SET Handicap = ? WHERE UserID = ?",
-                       (not_formatted_handicap, self.id))
-
-        return formatted_handicap
-
-    def get_user_info(self):
-        """Get information about the user"""
-        return db.users.get_one("SELECT * FROM Users WHERE Username='{0}'".format(self.username))
+    @staticmethod
+    def get_round(round_id):
+        """Gets information about a given round in the database"""
+        return db.rounds.get_one("SELECT * FROM Rounds WHERE RoundID=?", round_id)
