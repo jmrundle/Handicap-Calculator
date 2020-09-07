@@ -1,0 +1,6 @@
+selenium~=3.141.0
+bs4~=0.0.1
+boto3~=1.13.24
+python-dotenv~=0.13.0
+beautifulsoup4~=4.8.2
+requests~=2.22.0

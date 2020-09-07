@@ -1,8 +1,11 @@
+#!/usr/bin/env python3
+
 # python2
 try:
     from Tkinter import *
     import ttk
     import tkMessageBox
+
 
 # python3
 except ImportError:
@@ -10,17 +13,11 @@ except ImportError:
     from tkinter import ttk
     from tkinter import messagebox as tkMessageBox
 
-try:
-    from PIL import ImageTk, Image
-except ImportError:
-    pass
 
+from PIL import ImageTk, Image
 from datetime import datetime
-from accountManager import AccountManager
+from models import manager
 import handicap
-
-
-manager = AccountManager()
 
 
 class MainWindow(Tk):

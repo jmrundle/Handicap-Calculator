@@ -1,5 +1,0 @@
-"""
-generateDatabase.py
-
-wi
-"""
